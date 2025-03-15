@@ -1,0 +1,82 @@
+{
+    "admin": {
+        "password": "adminpass",
+        "role": "admin"
+    },
+    "PES2UG24AM018": {
+        "password": "PES2UG24AM018",
+        "role": "student"
+    },
+    "PES2UG24AM020": {
+        "password": "PES2UG24AM020",
+        "role": "student"
+    },
+    "PES2UG24AM024": {
+        "password": "PES2UG24AM024",
+        "role": "student"
+    },
+    "PES2UG24AM027": {
+        "password": "PES2UG24AM027",
+        "role": "student"
+    },
+    "PES2UG24AM025": {
+        "password": "PES2UG24AM025",
+        "role": "student"
+    },
+    "PES2UG24AM023": {
+        "password": "PES2UG24AM023",
+        "role": "student"
+    },
+    "PES2UG24AM028": {
+        "password": "PES2UG24AM028",
+        "role": "student"
+    },
+    "PES2UG24AM021": {
+        "password": "PES2UG24AM021",
+        "role": "student"
+    },
+    "PES2UG24AM017": {
+        "password": "PES2UG24AM017",
+        "role": "student"
+    },
+    "PES2UG24AM015": {
+        "password": "PES2UG24AM015",
+        "role": "student"
+    },
+    "PES2UG24AM022": {
+        "password": "PES2UG24AM022",
+        "role": "student"
+    },
+    "PES2UG24AM045": {
+        "password": "PES2UG24AM045",
+        "role": "student"
+    },
+    "PES2UG24AM026": {
+        "password": "PES2UG24AM026",
+        "role": "student"
+    },
+    "PES2UG24AM019": {
+        "password": "PES2UG24AM019",
+        "role": "student"
+    },
+    "GUEST": {
+        "password": "GUEST@$123",
+        "role": "student"
+    },
+    "PES2UG24AM042": {
+        "password": "PES2UG24AM042",
+        "role": "student"
+    },
+    "PES2UG24AM074": {
+        "password": "PES2UG24AM074",
+        "role": "student"
+    },
+    "PES2UG24AM176": {
+        "password": "PES2UG24AM176",
+        "role": "student"
+    },
+    "PES2UG24CS078": {
+        "password": "PES2UG24CS078",
+        "role": "student"
+    }
+}

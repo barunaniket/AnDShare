@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnDShare</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Dark Mode (Default) */
+            --bg: #0a0a0a;
+            --surface: #1a1a1a;
+            --accent: #7c3aed;
+            --accent-glow: #7c3aed80;
+            --text: rgba(255, 255, 255, 0.92);
+            --text-muted: rgba(255, 255, 255, 0.6);
+            --field-bg: #2a2a2a;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            --button-text: white;
+            --error: #ff6b6b;
+        }
+
+        /* Light Mode Variables */
+        .light-mode {
+            --bg: #fdf6f9;
+            --surface: #ffffff;
+            --accent: #f27eb1;
+            --accent-glow: rgba(242, 126, 177, 0.2);
+            --text: #333333;
+            --text-muted: #666666;
+            --field-bg: #f5f5f5;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            --button-text: white;
+            --error: #e74c3c;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            transition: background-color 0.3s, color 0.3s, box-shadow 0.3s;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 2rem;
+            line-height: 1.5;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Neon glow effect for dark mode */
+        body::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 50%, var(--accent-glow) 0%, transparent 50%);
+            opacity: 0.4;
+            z-index: -1;
+            transition: opacity 0.5s;
+        }
+
+        /* Sakura petals for light mode */
+        #sakura-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 1s;
+        }
+
+        .light-mode #sakura-container {
+            opacity: 1;
+        }
+
+        .petal {
+            position: absolute;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            width: 15px;
+            height: 15px;
+            opacity: 0.7;
+            animation: falling linear infinite;
+        }
+
+        @keyframes falling {
+            0% {
+                transform: translate(var(--x), -10%) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.7;
+            }
+            100% {
+                transform: translate(calc(var(--x) + var(--drift)), 110%) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .title {
+            font-size: 2.5rem;
+            font-weight: 600;
+            letter-spacing: -0.05em;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(45deg, var(--accent), #ad38f9);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .upload-container {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow);
+        }
+
+        /* Subtle glow for dark mode container */
+        body:not(.light-mode) .upload-container,
+        body:not(.light-mode) .file-list,
+        body:not(.light-mode) .modal-content {
+            box-shadow: 0 0 15px var(--accent-glow), var(--shadow);
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 1rem 2rem;
+            background: var(--accent);
+            color: var(--button-text);
+            text-decoration: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            font-family: 'Inter', sans-serif;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, var(--accent), var(--accent));
+            z-index: -1;
+            transition: opacity 0.3s;
+            opacity: 0;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px var(--accent-glow);
+        }
+
+        .btn:hover::before {
+            opacity: 1;
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .full-width {
+            width: 100%;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .admin-controls {
+            margin: 1rem 0;
+            text-align: center;
+            display: none;
+        }
+
+        .admin-controls a {
+            margin: 0 0.5rem;
+        }
+
+        .file-list {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+
+        .file-item {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            align-items: center;
+            padding: 1rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .light-mode .file-item {
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-item:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .light-mode .file-item:hover {
+            background: rgba(0, 0, 0, 0.02);
+        }
+
+        .file-name, .file-uploader, .file-size, .file-actions {
+            padding: 0 0.5rem;
+        }
+
+        .file-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-weight: 500;
+        }
+
+        .file-uploader {
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        .file-size {
+            color: var(--text-muted);
+        }
+
+        .download-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: var(--accent);
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .light-mode .download-btn {
+            background: rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .download-btn:hover {
+            background: var(--accent);
+            color: white;
+            border-color: transparent;
+            transform: translateY(-2px);
+        }
+
+        .no-files {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 2rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            display: none;
+        }
+
+        .status {
+            text-align: center;
+            color: var(--text-muted);
+            margin-top: 1rem;
+            font-weight: 500;
+        }
+
+        /* Password change modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .modal-content {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            width: 400px;
+            max-width: 90%;
+            position: relative;
+        }
+
+        .modal .form-group {
+            margin-bottom: 1.2rem;
+        }
+
+        .modal .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .modal .form-group input {
+            width: 100%;
+            padding: 0.8rem;
+            border: none;
+            border-radius: 10px;
+            background-color: var(--field-bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .modal .form-group input:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px var(--accent);
+        }
+
+        .modal .btn {
+            display: block;
+            width: 100%;
+            padding: 1rem;
+        }
+
+        .modal .error-message {
+            color: var(--error);
+            text-align: center;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .close-button {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: color 0.2s;
+        }
+
+        .close-button:hover {
+            color: var(--accent);
+        }
+
+        .settings-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: color 0.2s;
+            z-index: 5;
+        }
+
+        .settings-button:hover {
+            color: var(--accent);
+        }
+
+        .logout-button {
+            position: absolute;
+            top: 20px;
+            right: 60px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: color 0.2s;
+            z-index: 5;
+        }
+
+        .logout-button:hover {
+            color: var(--accent);
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 20px;
+            right: 100px;
+            display: flex;
+            align-items: center;
+            z-index: 5;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 60px;
+            height: 30px;
+            margin-left: 10px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--field-bg);
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: var(--accent);
+            transition: .4s;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+            color: white;
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+        }
+
+        .toggle-icon-dark,
+        .toggle-icon-light {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .toggle-icon-dark {
+            left: 10px;
+        }
+
+        .toggle-icon-light {
+            right: 10px;
+        }
+
+        /* Progress bar styles */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: var(--field-bg);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .progress-bar-inner {
+            height: 100%;
+            width: 0%;
+            background-color: var(--accent);
+            transition: width 0.2s ease-in-out;
+        }
+
+        .file-actions {
+            padding: 0 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            justify-content: flex-end;
+        }
+
+        /* Status styling */
+        .status-pending { color: #aaa; }
+        .status-completed { color: #4caf50; }
+        .status-rejected { color: #f44336; }
+
+        /* Logo */
+        .app-logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
+            display: block;
+            position: relative;
+        }
+
+        .logo-circle {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: linear-gradient(45deg, var(--accent), #ad38f9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-weight: 600;
+            font-size: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .logo-pulse {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: var(--accent);
+            opacity: 0.6;
+            animation: logo-pulse 2s infinite;
+        }
+
+        @keyframes logo-pulse {
+            0% {
+                transform: scale(0.95);
+                opacity: 0.7;
+            }
+            50% {
+                transform: scale(1.05);
+                opacity: 0.3;
+            }
+            100% {
+                transform: scale(0.95);
+                opacity: 0.7;
+            }
+        }
+
+        /* Status dropdown styling */
+        .status-select {
+            background-color: var(--field-bg);
+            color: var(--text);
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+        }
+
+        .status-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* Light mode adjustments */
+        .light-mode .status-select {
+            background-color: var(--field-bg);
+            color: var(--text);
+        }
+    </style>
+</head>
+<body>
+    <div id="sakura-container"></div>
+
+    <div class="theme-toggle">
+        <label class="toggle-switch">
+            <input type="checkbox" id="theme-toggle">
+            <span class="toggle-slider">
+                <span class="toggle-icon-dark">🌙</span>
+                <span class="toggle-icon-light">☀️</span>
+            </span>
+        </label>
+    </div>
+
+    <span class="settings-button" id="openSettings">⚙</span>
+    <span class="logout-button" id="logoutButton">↩️</span>
+
+    <div class="container">
+        <div class="header">
+            <div class="app-logo">
+                <div class="logo-circle">
+                    <div class="logo-pulse"></div>
+                    AnD
+                </div>
+            </div>
+            <h1 class="title">AnDShare</h1>
+            <p class="status" id="status">Connected · Ready to share</p>
+        </div>
+
+        <div class="upload-container">
+            <input type="file" id="file-input" multiple>
+            <button class="btn full-width" id="upload-trigger">+ Add Files</button>
+            <div class="progress-bar" id="progress-bar">
+                <div class="progress-bar-inner" id="progress-bar-inner"></div>
+            </div>
+        </div>
+
+        <div class="admin-controls" id="admin-controls">
+            <a href="/download_all" class="btn">Download All Files</a>
+            <a href="/download_uploaders" class="btn" id="download-uploaders-btn">Download Uploaders</a>
+            <button class="btn" id="clear-files-btn">Clear All Files</button>
+        </div>
+
+        <div class="file-list" id="file-list">
+            <div class="loading" id="loading">Syncing...</div>
+            <!-- Files will appear here dynamically -->
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <span class="close-button" id="closeSettings">×</span>
+            <h2>Change Password</h2>
+            <form id="changePasswordForm">
+                <div class="form-group">
+                    <label for="oldPassword">Old Password</label>
+                    <input type="password" id="oldPassword" name="oldPassword" required>
+                </div>
+                <div class="form-group">
+                    <label for="newPassword">New Password</label>
+                    <input type="password" id="newPassword" name="newPassword" required>
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm New Password</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" required>
+                </div>
+                <button type="submit" class="btn">Change Password</button>
+                <div class="error-message" id="changePasswordError"></div>
+                <div class="error-message" id="changePasswordSuccess"></div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const uploadTrigger = document.getElementById('upload-trigger');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const loading = document.getElementById('loading');
+        const status = document.getElementById('status');
+        const adminControls = document.getElementById('admin-controls');
+        const settingsButton = document.getElementById('openSettings');
+        const settingsModal = document.getElementById('settingsModal');
+        const closeSettings = document.getElementById('closeSettings');
+        const logoutButton = document.getElementById('logoutButton');
+        const themeToggle = document.getElementById('theme-toggle');
+        const body = document.body;
+        const sakuraContainer = document.getElementById('sakura-container');
+
+        // Check for saved theme preference or use default
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        if (savedTheme === 'light') {
+            body.classList.add('light-mode');
+            themeToggle.checked = true;
+            createSakuraPetals();
+        }
+
+        // Theme toggle functionality
+        themeToggle.addEventListener('change', () => {
+            if (themeToggle.checked) {
+                body.classList.add('light-mode');
+                localStorage.setItem('theme', 'light');
+                createSakuraPetals();
+            } else {
+                body.classList.remove('light-mode');
+                localStorage.setItem('theme', 'dark');
+            }
+        });
+
+        // Create sakura petals
+        function createSakuraPetals() {
+            sakuraContainer.innerHTML = '';
+            const petalCount = 30;
+            
+            for (let i = 0; i < petalCount; i++) {
+                const petal = document.createElement('div');
+                petal.classList.add('petal');
+                
+                // Random properties for natural movement
+                const size = Math.random() * 10 + 10; // 10-20px
+                const xPos = Math.random() * 100; // 0-100%
+                const drift = (Math.random() - 0.5) * 100; // -50 to 50px drift
+                const duration = Math.random() * 10 + 10; // 10-20s fall duration
+                const delay = Math.random() * 15; // 0-15s delay
+                
+                petal.style.setProperty('--x', `${xPos}%`);
+                petal.style.setProperty('--drift', `${drift}px`);
+                petal.style.width = `${size}px`;
+                petal.style.height = `${size}px`;
+                petal.style.animationDuration = `${duration}s`;
+                petal.style.animationDelay = `${delay}s`;
+                petal.style.backgroundColor = '#ffc6e0';
+                petal.style.borderRadius = '30% 70% 70% 30% / 30% 30% 70% 70%';
+                petal.style.transform = `rotate(${Math.random() * 360}deg)`;
+                
+                sakuraContainer.appendChild(petal);
+            }
+        }
+
+        // Modal event listeners
+        settingsButton.addEventListener('click', () => {
+            settingsModal.style.display = 'flex';
+        });
+
+        closeSettings.addEventListener('click', () => {
+            settingsModal.style.display = 'none';
+        });
+
+        window.addEventListener('click', (event) => {
+            if (event.target == settingsModal) {
+                settingsModal.style.display = 'none';
+            }
+        });
+
+        const changePasswordForm = document.getElementById('changePasswordForm');
+        const changePasswordError = document.getElementById('changePasswordError');
+        const changePasswordSuccess = document.getElementById('changePasswordSuccess');
+
+        changePasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const oldPassword = changePasswordForm.oldPassword.value;
+            const newPassword = changePasswordForm.newPassword.value;
+            const confirmPassword = changePasswordForm.confirmPassword.value;
+
+            if (newPassword !== confirmPassword) {
+                changePasswordError.textContent = 'New passwords do not match.';
+                changePasswordSuccess.textContent = '';
+                return;
+            }
+
+            try {
+                const response = await fetch('/change_password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ oldPassword, newPassword })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    changePasswordSuccess.textContent = data.message || 'Password changed successfully.';
+                    changePasswordError.textContent = '';
+                    changePasswordForm.reset();
+                    setTimeout(() => {
+                        settingsModal.style.display = 'none';
+                        changePasswordSuccess.textContent = '';
+                    }, 3000);
+                } else {
+                    changePasswordError.textContent = 'Password change failed.';
+                    changePasswordSuccess.textContent = '';
+                }
+            } catch (error) {
+                console.error('Password change error:', error);
+                changePasswordError.textContent = 'An error occurred.';
+                changePasswordSuccess.textContent = '';
+            }
+        });
+
+        // Check if user is authenticated
+        async function checkAuth() {
+            try {
+                const response = await fetch('/files');
+                if (response.status === 401) {
+                    window.location.href = '/login.html';
+                } else if (!response.ok) {
+                    throw new Error('Failed to check authentication');
+                } else {
+                    const data = await response.json();
+                    const role = data.role;
+                    adminControls.style.display = role === 'admin' ? 'block' : 'none';
+                }
+            } catch (error) {
+                console.error('Error checking authentication:', error);
+                status.textContent = 'Authentication check failed.';
+                window.location.href = '/login.html';
+            }
+        }
+
+        // Refresh file list every 5 seconds
+        setInterval(fetchFiles, 5000);
+
+        async function fetchFiles() {
+            try {
+                const response = await fetch('/files');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch files');
+                }
+                const data = await response.json();
+                const role = data.role;
+                const files = data.files;
+                renderFiles(files);
+                adminControls.style.display = role === 'admin' ? 'block' : 'none';
+            } catch (error) {
+                console.error('Error fetching files:', error);
+                status.textContent = 'Error loading files';
+            }
+        }
+
+        function renderFiles(files) {
+            if (files.length === 0) {
+                fileList.innerHTML = '<p class="no-files">No files available</p>';
+            } else {
+                fileList.innerHTML = files.map(file => `
+                    <div class="file-item">
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-uploader">${file.uploader}</div>
+                        <div class="file-size">${formatSize(file.size)}</div>
+                        <div class="file-actions">
+                            <a href="${file.url}" class="download-btn" download>Download</a>
+                            ${file.isViewable ? `<a href="${file.url}" class="download-btn" target="_blank">View</a>` : ''}
+                            ${adminControls.style.display === 'block' ? 
+                                `<select class="status-select" data-filename="${file.name}" onchange="updateStatus(this)">
+                                    <option value="pending" ${file.status === 'pending' ? 'selected' : ''} class="status-pending">Pending</option>
+                                    <option value="completed" ${file.status === 'completed' ? 'selected' : ''} class="status-completed">Completed</option>
+                                    <option value="rejected" ${file.status === 'rejected' ? 'selected' : ''} class="status-rejected">Rejected</option>
+                                </select>` : ''
+                            }
+                         </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        async function updateStatus(selectElement) {
+            const filename = selectElement.dataset.filename;
+            const status = selectElement.value;
+
+            try {
+                const response = await fetch('/update_status', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ filename, status })
+                });
+
+                if (response.ok) {
+                    console.log(`Status for ${filename} updated to ${status}`);
+                    fetchFiles();
+                } else {
+                    console.error(`Failed to update status for ${filename}`);
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
+        }
+
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return parseFloat((bytes / Math.pow(1024, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        uploadTrigger.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', async (e) => {
+            if (!e.target.files.length) return;
+
+            const formData = new FormData();
+            const files = Array.from(e.target.files);
+            for (const file of files) {
+                formData.append('files', file);
+            }
+
+            const progressBar = document.getElementById('progress-bar');
+            const progressBarInner = document.getElementById('progress-bar-inner');
+            progressBar.style.display = 'block';
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload');
+
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    progressBarInner.style.width = percentComplete + '%';
+                }
+            });
+
+            xhr.onload = () => {
+                progressBar.style.display = 'none';
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    status.textContent = 'Files shared successfully';
+                    setTimeout(() => status.textContent = 'Connected · Ready to share', 3000);
+                    fileInput.value = '';
+                    fetchFiles();
+                } else {
+                    status.textContent = 'Upload failed';
+                }
+            };
+
+            xhr.onerror = () => {
+                progressBar.style.display = 'none';
+                status.textContent = 'Error sharing files';
+            };
+
+            xhr.send(formData);
+        });
+
+        const clearFilesBtn = document.getElementById('clear-files-btn');
+        if (clearFilesBtn) {
+            clearFilesBtn.addEventListener('click', async () => {
+                if (confirm('Are you sure you want to clear all files and metadata? This action cannot be undone.')) {
+                    try {
+                        const response = await fetch('/clear_files', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        if (response.ok) {
+                            const data = await response.json();
+                            alert(data.message);
+                            fetchFiles();
+                        } else {
+                            alert('Failed to clear files');
+                        }
+                    } catch (error) {
+                        console.error('Error clearing files:', error);
+                        alert('An error occurred while clearing files');
+                    }
+                }
+            });
+        }
+
+        // Logout functionality
+        logoutButton.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/logout', {
+                    method: 'POST',
+                    credentials: 'include' // Include cookies in the request
+                });
+                
+                if (response.redirected) {
+                    window.location.href = response.url; // Follow the redirect to login.html
+                } else {
+                    status.textContent = 'Logout failed';
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                status.textContent = 'Error during logout';
+            }
+        });
+
+        // Initial auth check and load
+        checkAuth();
+        fetchFiles();
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'91f3ef7b9e50bfea',t:'MTc0MTc4OTI2MC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'91f982fafb3253c4',t:'MTc0MTg0NzczMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
