@@ -1,3 +1,4 @@
 aiofiles==24.1.0
-aiohttp==3.11.13
-locustio==0.999
+aiohttp==3.9.5
+locust==2.27.0
+aiosqlite==0.20.0

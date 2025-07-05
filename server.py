@@ -1,12 +1,12 @@
 import aiohttp
 import asyncio
 import base64
-import json
+import json # Keep for request/response parsing, not for file storage
 import logging
 import mimetypes
 import os
 import socket
-import threading
+import threading # sessions_lock can remain for in-memory session management
 import time
 import uuid
 from io import BytesIO
@@ -16,49 +16,66 @@ import aiofiles
 import zipfile
 from aiohttp import web
 
-# Configure logging with reduced verbosity
-logging.basicConfig(level=logging.WARNING,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('file_server')
+# Import database setup and query functions
+import db_setup
+import db_queries
+
+# Configure logging
+# logging.basicConfig(level=logging.INFO, # Adjusted for more visibility during dev
+#                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# logger = logging.getLogger('classroom_server') # Renamed logger
+
+# Reconfigure logging to be less verbose for general operation, but allow specific loggers to be more verbose.
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+logger = logging.getLogger('classroom_server')
+# For development, you might want to set the logger for your specific modules to INFO or DEBUG
+# logging.getLogger('db_queries').setLevel(logging.INFO)
+# logging.getLogger('classroom_server').setLevel(logging.INFO)
+
 
 # Configuration with absolute paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # Directory of this script
-PORT = 1819
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")  # Absolute path to uploads directory
-USERS_FILE = os.path.join(BASE_DIR, "users.json")  # Absolute path to users file
-METADATA_FILE = os.path.join(BASE_DIR, "file_metadata.json")  # Absolute path to metadata file
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PORT = 1819 # Consider making this configurable via environment variable
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 SESSION_TIMEOUT = 300  # 5 minutes in seconds
+# DATABASE_NAME is implicitly used by db_setup and db_queries
 
 # Ensure the uploads directory exists
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Load users and metadata with caching
-try:
-    with open(USERS_FILE, 'r') as f:
-        users = json.load(f)
-    logger.info("Users file loaded successfully.")
-except (FileNotFoundError, json.JSONDecodeError) as e:
-    logger.error(f"Error loading users file: {e}")
-    users = {}
-last_users_sync = time.time()
-
-try:
-    with open(METADATA_FILE, 'r') as f:
-        file_metadata = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
-    logger.info("No metadata file found or invalid format. Creating new metadata.")
-    file_metadata = {}
+# Removed old JSON file loading for users and metadata
+# Removed old USERS_FILE and METADATA_FILE constants
 
 # Thread-safe sessions dictionary
 sessions_lock = threading.Lock()
 sessions = {}
 
-# Locks for shared resources
-metadata_lock = asyncio.Lock()
-users_lock = asyncio.Lock()
+# Removed metadata_lock and users_lock as DB handles concurrency
+
+
+async def init_db(app):
+    """Initialize database tables on startup."""
+    try:
+        await db_setup.create_tables()
+        logger.info("Database tables checked/created successfully.")
+        # Optional: Create a default superadmin user if none exists
+        superadmin_username = os.environ.get("SUPERADMIN_USERNAME", "superadmin")
+        superadmin_password = os.environ.get("SUPERADMIN_PASSWORD", "superadminpass")
+        existing_superadmin = await db_queries.get_user_by_username(superadmin_username)
+        if not existing_superadmin:
+            await db_queries.add_user(superadmin_username, superadmin_password, "superadmin")
+            logger.info(f"Default superadmin user '{superadmin_username}' created.")
+        else:
+            logger.info(f"Superadmin user '{superadmin_username}' already exists.")
+
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}", exc_info=True)
+        # Depending on the severity, you might want to prevent the app from starting
+        # raise # Or handle more gracefully
+
 
 def generate_session_id():
-    """Generate a unique session ID"""
+    """Generate a unique session ID."""
     return str(uuid.uuid4())
 
 def create_session(username):
@@ -106,49 +123,35 @@ def clear_upload_dir():
 async def check_auth(request):
     """Check if the user is authenticated"""
     session_id = request.cookies.get('session_id')
-    logger.debug(f"Checking authentication. Session ID from cookie: {session_id}")  # Added logging
+    logger.debug(f"Checking authentication. Session ID from cookie: {session_id}")
 
     if not session_id:
         logger.warning("No session ID found in cookies.")
+        return None # No session ID, so not authenticated
+
+    username_from_session = get_username_from_session(session_id) # This checks expiry
+    if not username_from_session:
+        logger.warning(f"Session ID {session_id} is invalid or expired.")
+        return None # Session expired or invalid
+
+    # Fetch full user details from DB to get role and ID
+    user = await db_queries.get_user_by_username(username_from_session)
+    if not user:
+        logger.error(f"User '{username_from_session}' from valid session not found in database. Deleting session.")
+        delete_session(session_id) # Clean up inconsistent session
         return None
 
-    username = get_username_from_session(session_id)
-    logger.info(f"Username retrieved from session: {username}")
+    # Attach user object to the request for easy access in handlers
+    # request['user'] = user # This is a common pattern
+    logger.info(f"User {user['username']} (ID: {user['id']}, Role: {user['role']}) authenticated via session {session_id}.")
+    return user # Return the full user object (dict)
 
-    return username
-
-# Asynchronous save functions
-async def save_metadata():
-    """Save file metadata to disk asynchronously"""
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, _save_metadata_sync)
-
-def _save_metadata_sync():
-    """Synchronous helper to save metadata"""
-    try:
-        with open(METADATA_FILE, 'w') as f:
-            json.dump(file_metadata, f, indent=4)
-        logger.info("Metadata saved successfully")
-    except Exception as e:
-        logger.error(f"Error saving metadata: {e}")
-
-async def save_users():
-    """Save users to disk asynchronously"""
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, _save_users_sync)
-
-def _save_users_sync():
-    """Synchronous helper to save users"""
-    try:
-        with open(USERS_FILE, 'w') as f:
-            json.dump(users, f, indent=4)
-        logger.info("Users saved successfully")
-    except Exception as e:
-        logger.error(f"Error saving users: {e}")
+# Removed save_metadata, _save_metadata_sync, save_users, _save_users_sync functions
+# as user and file metadata are now handled by the database.
 
 # Request Handlers
 async def login_handler(request):
-    """Handle user login with optimizations"""
+    """Handle user login using database."""
     try:
         if not request.headers.get('Content-Type', '').startswith('application/json'):
             logger.warning("Invalid Content-Type for login request")
@@ -159,21 +162,24 @@ async def login_handler(request):
         password = data.get('password')
 
         if not username or not password:
-            logger.warning(f"Missing credentials in login attempt: username={username}")
+            logger.warning(f"Missing credentials in login attempt for username: {username}")
             return web.json_response({'message': 'Missing username or password'}, status=400)
 
-        if username in users and users[username].get('password') == password:
-            session_id = create_session(username)
-            response = web.json_response({'message': 'Login successful'})
-            response.set_cookie('session_id', session_id, httponly=True)
-            logger.info(f"Login successful for user {username}. Setting session ID: {session_id}")
+        user = await db_queries.get_user_by_username(username)
+
+        if user and user["password_hash"] == db_queries.hash_password(password):
+            # User authenticated successfully
+            session_id = create_session(username) # Session stores username, could store user_id too
+            response = web.json_response({'message': 'Login successful', 'role': user['role']})
+            response.set_cookie('session_id', session_id, httponly=True, samesite='Lax') # Added samesite
+            logger.info(f"Login successful for user {username} (Role: {user['role']}). Session ID: {session_id}")
             return response
         else:
-            logger.warning(f"Failed login attempt for user: {username} - Invalid credentials")
+            logger.warning(f"Failed login attempt for user: {username} - Invalid credentials or user not found.")
             return web.json_response({'message': 'Invalid credentials'}, status=401)
 
     except json.JSONDecodeError:
-        logger.error("Invalid JSON in login request")
+        logger.error("Invalid JSON in login request body.")
         return web.json_response({'message': 'Invalid JSON format'}, status=400)
     except Exception as e:
         logger.error(f"Error in login_handler: {e}")
@@ -190,107 +196,120 @@ async def logout_handler(request):
     return response
 
 async def change_password_handler(request):
-    """Handle password change requests"""
-    username = await check_auth(request)
-    if not username:
+    """Handle password change requests using database."""
+    authenticated_user = await check_auth(request) # Returns user dict or None
+    if not authenticated_user:
         return web.json_response({'message': 'Not authenticated'}, status=401)
+
+    current_username = authenticated_user['username']
 
     try:
         data = await request.json()
-        old_password = data.get('oldPassword')
+        old_password_attempt = data.get('oldPassword')
         new_password = data.get('newPassword')
 
-        async with users_lock:
-            if users[username]['password'] == old_password:
-                users[username]['password'] = new_password
-                await save_users()
-                logger.info(f"Password changed successfully for user: {username}")
+        if not old_password_attempt or not new_password:
+            logger.warning(f"Missing old or new password for user: {current_username}")
+            return web.json_response({'message': 'Missing old or new password'}, status=400)
+
+        # Fetch the user again to get the current password hash for comparison
+        # This is important if password_hash was not included in `authenticated_user` from check_auth,
+        # or to ensure we have the absolute latest hash.
+        user_from_db = await db_queries.get_user_by_username(current_username)
+        if not user_from_db:
+             # Should not happen if check_auth passed, but good for robustness
+            logger.error(f"Authenticated user {current_username} not found in DB during password change.")
+            return web.json_response({'message': 'User not found, please re-login.'}, status=401)
+
+        if user_from_db['password_hash'] == db_queries.hash_password(old_password_attempt):
+            success = await db_queries.update_user_password(current_username, new_password)
+            if success:
+                logger.info(f"Password changed successfully for user: {current_username}")
                 return web.json_response({'message': 'Password changed successfully'})
             else:
-                logger.warning(f"Incorrect old password for user: {username}")
-                return web.json_response({'message': 'Incorrect old password'}, status=400)
+                logger.error(f"Failed to update password in DB for user: {current_username}")
+                return web.json_response({'message': 'Password change failed at database level.'}, status=500)
+        else:
+            logger.warning(f"Incorrect old password attempt for user: {current_username}")
+            return web.json_response({'message': 'Incorrect old password'}, status=400)
 
+    except json.JSONDecodeError:
+        logger.error(f"Invalid JSON in change_password_handler for user: {current_username}")
+        return web.json_response({'message': 'Invalid JSON format'}, status=400)
     except Exception as e:
-        logger.error(f"Error in change_password_handler: {e}")
+        logger.error(f"Error in change_password_handler for user {current_username}: {e}", exc_info=True)
         return web.json_response({'message': 'Internal server error'}, status=500)
 
 async def file_list_handler(request):
-    """Return a list of files accessible to the user with uploader info"""
-    username = await check_auth(request)
-    if not username:
+    """
+    Return a list of files.
+    NOTE: This is a placeholder and will be significantly refactored
+    to support classrooms, assignments, and submissions.
+    For now, it returns an empty list but performs auth.
+    """
+    authenticated_user = await check_auth(request) # Returns user dict or None
+    if not authenticated_user:
         return web.json_response({'message': 'Not authenticated'}, status=401)
 
-    role = users[username]['role']
-    files = []
+    role = authenticated_user['role']
+    username = authenticated_user['username'] # For logging
+    files = [] # Placeholder
 
-    loop = asyncio.get_running_loop()
-    file_names = await loop.run_in_executor(None, os.listdir, UPLOAD_DIR)
+    # TODO: Implement actual file listing based on user role and classroom context
+    # - Teachers: See assignments they created, submissions to their assignments.
+    # - Students: See assignments in their enrolled classrooms, their own submissions.
+    # - SuperAdmins: Potentially a different view or all files.
 
-    for filename in file_names:
-        filepath = os.path.join(UPLOAD_DIR, filename)
-        is_file = await loop.run_in_executor(None, os.path.isfile, filepath)
-        if is_file:
-            size = await loop.run_in_executor(None, os.path.getsize, filepath)
-            uploader = file_metadata.get(filename, {}).get('uploader', 'admin')
-            status = file_metadata.get(filename, {}).get('status', 'pending')
-            mime_type, _ = mimetypes.guess_type(filename)
-            is_viewable = mime_type and (
-                mime_type.startswith('text/') or
-                mime_type == 'application/pdf' or
-                mime_type.startswith('image/') or
-                mime_type == 'application/json' or
-                mime_type == 'text/html'
-            )
-
-            if role == 'admin' or uploader == username or uploader == 'admin':
-                files.append({
-                    'name': filename,
-                    'size': size,
-                    'url': f'/shared/{filename}',
-                    'uploader': uploader,
-                    'status': status,
-                    'isViewable': is_viewable
-                })
-
-    logger.info(f"File list requested by user: {username}, found {len(files)} accessible files")
+    logger.info(f"File list requested by user: {username} (Role: {role}). Currently returns placeholder.")
     return web.json_response({'role': role, 'files': files})
 
 async def file_download_handler(request):
-    """Serve a file if the user has permission"""
-    username = await check_auth(request)
-    if not username:
+    """
+    Serve a file.
+    NOTE: This is a placeholder and will be refactored.
+    Permissions will depend on classroom, assignment, submission context.
+    """
+    authenticated_user = await check_auth(request)
+    if not authenticated_user:
         return web.json_response({'message': 'Not authenticated'}, status=401)
 
     filename = unquote(request.match_info['filename'])
-    filepath = os.path.join(UPLOAD_DIR, filename)
+    filepath = os.path.join(UPLOAD_DIR, filename) # This path might change with classroom structure
 
-    if not await asyncio.to_thread(os.path.exists, filepath):
-        logger.warning(f"File not found: {filename}")
+    if not await asyncio.to_thread(os.path.exists, filepath): # os.path.exists is blocking, run in thread
+        logger.warning(f"File not found: {filename} at path {filepath}")
         return web.json_response({'message': 'File not found'}, status=404)
 
-    role = users[username]['role']
-    uploader = file_metadata.get(filename, {}).get('uploader', 'admin')
-    
-    if role != 'admin' and uploader != username and uploader != 'admin':
-        logger.warning(f"Permission denied for user: {username} to access file: {filename}")
-        return web.json_response({'message': 'Permission denied'}, status=403)
+    # TODO: Implement actual permission checking based on classroom/assignment/submission context.
+    # The following is old logic and will not work correctly.
+    # role = authenticated_user['role']
+    # username = authenticated_user['username']
+    # uploader = file_metadata.get(filename, {}).get('uploader', 'admin') # file_metadata is gone
+    # if role != 'admin' and uploader != username and uploader != 'admin':
+    #     logger.warning(f"Permission denied for user: {username} to access file: {filename} (using old logic)")
+    #     return web.json_response({'message': 'Permission denied (placeholder logic)'}, status=403)
 
-    mime_type, _ = mimetypes.guess_type(filename)
+    logger.info(f"File download attempt for: {filename} by user: {authenticated_user['username']}. Placeholder permission logic.")
     
-    logger.info(f"File download: {filename} by user: {username}")
+    mime_type, _ = mimetypes.guess_type(filename)
     return web.FileResponse(filepath, headers={
         'Content-Type': mime_type or 'application/octet-stream'
     })
 
 async def file_upload_handler(request):
-    """Handle file uploads and update metadata"""
-    username = await check_auth(request)
-    if not username:
+    """
+    Handle file uploads.
+    NOTE: This is a placeholder. Metadata saving needs to be integrated
+    with Assignments/Submissions in the database.
+    """
+    authenticated_user = await check_auth(request)
+    if not authenticated_user:
         return web.json_response({'message': 'Not authenticated'}, status=401)
 
+    username = authenticated_user['username'] # For logging and potentially associating file
     reader = await request.multipart()
     
-    updates = {}
+    # updates = {} # Old way of collecting metadata for JSON
     file_count = 0
     while True:
         part = await reader.next()
@@ -310,31 +329,41 @@ async def file_upload_handler(request):
                         if not chunk:
                             break
                         await f.write(chunk)
-                updates[filename] = {'uploader': username, 'status': 'pending'}
+                # updates[filename] = {'uploader': username, 'status': 'pending'} # Old metadata
+                # For now, we are not associating file with DB records here. This needs full implementation.
+                logger.info(f"File {filename} uploaded by {username} to {filepath}. No DB record created yet.")
                 file_count += 1
             except Exception as e:
-                logger.error(f"Error uploading file {filename}: {e}")
-                if os.path.exists(filepath):
-                    os.remove(filepath)
+                logger.error(f"Error uploading file {filename} by {username}: {e}", exc_info=True)
+                if await asyncio.to_thread(os.path.exists, filepath): # Check before removing
+                    await asyncio.to_thread(os.remove, filepath) # Use asyncio.to_thread for os.remove
     
-    if updates:
-        async with metadata_lock:
-            file_metadata.update(updates)
-            await save_metadata()
+    # if updates: # Old metadata saving logic
+    #     async with metadata_lock: # metadata_lock is removed
+    #         file_metadata.update(updates) # file_metadata is removed
+    #         await save_metadata() # save_metadata is removed
     
-    logger.info(f"User {username} uploaded {file_count} files")
-    return web.json_response({'message': f'Successfully uploaded {file_count} files'})
+    logger.info(f"User {username} attempted to upload {file_count} files. Placeholder: no DB interaction yet.")
+    if file_count > 0:
+        return web.json_response({'message': f'Successfully uploaded {file_count} files to server. DB record pending proper implementation.'})
+    else:
+        return web.json_response({'message': 'No files were processed or an error occurred.'}, status=400)
+
 
 async def download_all_handler(request):
-    """Allow admins to download a ZIP of all files"""
-    username = await check_auth(request)
-    if not username:
+    """
+    Allow admins to download a ZIP of all files.
+    NOTE: This needs to be adapted for superadmin role and classroom structure.
+    Currently, it will check for 'superadmin' role.
+    """
+    authenticated_user = await check_auth(request)
+    if not authenticated_user:
         return web.json_response({'message': 'Not authenticated'}, status=401)
 
-    role = users[username]['role']
-    if role != 'admin':
-        logger.warning(f"Admin access required: {username} attempted to download all files")
-        return web.json_response({'message': 'Admin access required'}, status=403)
+    # Role check - should be 'superadmin' for this global action
+    if authenticated_user['role'] != 'superadmin':
+        logger.warning(f"User {authenticated_user['username']} (Role: {authenticated_user['role']}) attempted to download all files. Requires 'superadmin'.")
+        return web.json_response({'message': "Forbidden: Requires 'superadmin' role."}, status=403)
 
     loop = asyncio.get_running_loop()
     def create_zip():
@@ -359,87 +388,103 @@ async def download_all_handler(request):
     )
 
 async def download_uploaders_handler(request):
-    """Allow admins to download a list of all unique uploaders and their count"""
-    username = await check_auth(request)
-    if not username:
+    """
+    Allow admins to download a list of all unique uploaders and their count.
+    NOTE: This is a placeholder. It needs to be re-implemented based on data
+    from Assignments and Submissions tables, likely for superadmin view.
+    """
+    authenticated_user = await check_auth(request)
+    if not authenticated_user:
         return web.json_response({'message': 'Not authenticated'}, status=401)
 
-    role = users[username]['role']
-    if role != 'admin':
-        logger.warning(f"Admin access required: {username} attempted to download uploaders list")
-        return web.json_response({'message': 'Admin access required'}, status=403)
+    # This was an admin-only feature, mapping to 'superadmin' or perhaps 'teacher' for their own classroom contexts.
+    # For a global list of all uploaders, 'superadmin' seems appropriate.
+    if authenticated_user['role'] != 'superadmin':
+        logger.warning(f"User {authenticated_user['username']} (Role: {authenticated_user['role']}) attempted to download uploaders list. Requires 'superadmin'.")
+        return web.json_response({'message': "Forbidden: Requires 'superadmin' role."}, status=403)
 
-    unique_uploaders = sorted(set(data['uploader'] for data in file_metadata.values()))
-    total_uploaders = len(unique_uploaders)
+    # Old logic based on file_metadata is removed.
+    # TODO: Re-implement by querying Users, Assignments, Submissions tables.
+    # For example, find all distinct uploader_ids from Assignments and student_ids from Submissions.
 
-    content = f"Total Uploaders: {total_uploaders}\n\nUploaders:\n"
-    for filename, data in file_metadata.items():
-        content += f"- {data['uploader']} (File: {filename}, Status: {data['status']})\n"
+    logger.info(f"User {authenticated_user['username']} attempted to download uploaders list. Feature pending re-implementation.")
+
+    content = "Uploader list feature is currently under reconstruction based on the new database structure.\n"
+    content += "This report will show distinct users who have uploaded assignments or made submissions.\n"
     content_bytes = content.encode('utf-8')
 
-    logger.info(f"Admin {username} downloaded uploaders list")
     return web.Response(
         body=content_bytes,
         headers={
             'Content-Type': 'text/plain',
-            'Content-Disposition': 'attachment; filename="uploaders.txt"',
+            'Content-Disposition': 'attachment; filename="uploaders_status.txt"', # Renamed to reflect it's a status
             'Content-Length': str(len(content_bytes))
         }
     )
 
 async def update_status_handler(request):
-    """Handle updating the completion status of a file"""
-    username = await check_auth(request)
-    if not username:
+    """
+    Handle updating the completion status of a file.
+    NOTE: This is a placeholder. It needs to be integrated with Submissions in the database.
+    Role check will be for 'teacher' or 'superadmin' in the context of a submission.
+    """
+    authenticated_user = await check_auth(request)
+    if not authenticated_user:
         return web.json_response({'message': 'Not authenticated'}, status=401)
 
-    if users[username]['role'] != 'admin':
-        logger.warning(f"Admin access required: {username} attempted to update file status")
-        return web.json_response({'message': 'Admin access required'}, status=403)
+    # This functionality is primarily for teachers marking submissions, or superadmins.
+    # The old 'admin' role might map to 'teacher' or 'superadmin' depending on context.
+    # For now, let's assume a 'teacher' or 'superadmin' can do this.
+    if authenticated_user['role'] not in ['teacher', 'superadmin']:
+        logger.warning(f"User {authenticated_user['username']} (Role: {authenticated_user['role']}) attempted to update file status. Requires 'teacher' or 'superadmin'.")
+        return web.json_response({'message': "Forbidden: Requires 'teacher' or 'superadmin' role."}, status=403)
 
     try:
         data = await request.json()
-        filename = data.get('filename')
+        # These would refer to a submission ID and the new status
+        submission_id = data.get('submission_id') # Changed from filename
         status = data.get('status')
 
-        if filename and status in ['pending', 'completed', 'rejected']:
-            async with metadata_lock:
-                if filename in file_metadata:
-                    file_metadata[filename]['status'] = status
-                    await save_metadata()
-                    logger.info(f"Status updated for file: {filename} to {status}")
-                    return web.json_response({'message': 'Status updated successfully'})
-                else:
-                    logger.warning(f"File not found: {filename}")
-                    return web.json_response({'message': 'File not found'}, status=404)
+        if submission_id and status in ['pending', 'submitted', 'completed', 'rejected']: # 'pending' might not be settable by user
+            # TODO: Implement db_queries.update_submission_status(submission_id, status)
+            # And verify the authenticated_user has permission to update this specific submission.
+            logger.info(f"Placeholder: User {authenticated_user['username']} attempted to update status for submission ID {submission_id} to {status}.")
+            return web.json_response({'message': 'Status update placeholder - DB interaction not implemented.'})
         else:
-            logger.warning(f"Invalid request to update status: {filename}, {status}")
-            return web.json_response({'message': 'Invalid filename or status'}, status=400)
+            logger.warning(f"Invalid request to update status: submission_id={submission_id}, status={status} by user {authenticated_user['username']}")
+            return web.json_response({'message': 'Invalid submission_id or status'}, status=400)
 
+    except json.JSONDecodeError:
+        logger.error(f"Invalid JSON in update_status_handler by user {authenticated_user['username']}")
+        return web.json_response({'message': 'Invalid JSON format'}, status=400)
     except Exception as e:
-        logger.error(f"Error in update_status_handler: {e}")
+        logger.error(f"Error in update_status_handler for user {authenticated_user['username']}: {e}", exc_info=True)
         return web.json_response({'message': 'Internal server error'}, status=500)
 
 async def clear_files_handler(request):
-    """Handle clearing all files and metadata (admin only)"""
-    username = await check_auth(request)
-    if not username:
+    """
+    Handle clearing all files and metadata (superadmin only).
+    NOTE: This needs careful consideration. "All files" needs to be defined.
+    It might mean all files in UPLOAD_DIR and clearing corresponding DB records.
+    For now, it only clears UPLOAD_DIR if user is superadmin. DB records are untouched.
+    """
+    authenticated_user = await check_auth(request)
+    if not authenticated_user:
         return web.json_response({'message': 'Not authenticated'}, status=401)
     
-    role = users[username]['role']
-    if role != 'admin':
-        logger.warning(f"Admin access required: {username} attempted to clear files")
-        return web.json_response({'message': 'Admin access required'}, status=403)
+    if authenticated_user['role'] != 'superadmin':
+        logger.warning(f"User {authenticated_user['username']} (Role: {authenticated_user['role']}) attempted to clear all files. Requires 'superadmin'.")
+        return web.json_response({'message': "Forbidden: Requires 'superadmin' role."}, status=403)
     
     try:
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, clear_upload_dir)
+        await loop.run_in_executor(None, clear_upload_dir) # clear_upload_dir just empties the folder
         
-        async with metadata_lock:
-            file_metadata.clear()
-            await save_metadata()
+        # The old metadata clearing is removed as file_metadata is gone.
+        # TODO: Implement logic to clear relevant records from Assignments and Submissions tables.
+        # This is a destructive operation and needs careful thought.
         
-        logger.info(f"Admin {username} cleared all files and metadata")
+        logger.info(f"Superadmin {authenticated_user['username']} cleared all files from UPLOAD_DIR. DB records not yet affected by this handler.")
         return web.json_response({'message': 'All files and metadata cleared successfully'})
     except Exception as e:
         logger.error(f"Error clearing files: {e}")
@@ -513,11 +558,14 @@ async def cleanup_background_tasks(app):
 def create_app():
     """Create and configure the application"""
     app = web.Application(middlewares=[error_middleware])
+
+    # Database initialization
+    app.on_startup.append(init_db)
     
     # Routes
     app.add_routes([
         web.get('/', index_handler),
-        web.get('/files', file_list_handler),
+        web.get('/files', file_list_handler), # This will need significant changes
         web.get('/shared/{filename}', file_download_handler),
         web.get('/download_all', download_all_handler),
         web.get('/download_uploaders', download_uploaders_handler),
