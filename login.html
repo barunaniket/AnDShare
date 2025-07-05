@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - AnDShare</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script defer src="/static/js/theme.js"></script>
+    <script defer src="/static/js/auth.js"></script>
     <style>
         :root {
             /* Dark Mode (Default) */
@@ -402,105 +404,17 @@
     <script>
         const loginForm = document.getElementById('login-form');
         const errorMessage = document.getElementById('error-message');
-        const themeToggle = document.getElementById('theme-toggle');
-        const body = document.body;
-        const sakuraContainer = document.getElementById('sakura-container');
+        // Theme-related JavaScript has been moved to static/js/theme.js
+        // Login form submission logic is in static/js/auth.js (handleLoginFormSubmit)
 
-        // Check for saved theme preference or use default
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        if (savedTheme === 'light') {
-            body.classList.add('light-mode');
-            themeToggle.checked = true;
-        }
-
-        // Theme toggle functionality
-        themeToggle.addEventListener('change', () => {
-            if (themeToggle.checked) {
-                body.classList.add('light-mode');
-                localStorage.setItem('theme', 'light');
-                createSakuraPetals();
-            } else {
-                body.classList.remove('light-mode');
-                localStorage.setItem('theme', 'dark');
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginForm = document.getElementById('login-form');
+            if (loginForm) {
+                loginForm.addEventListener('submit', handleLoginFormSubmit);
             }
         });
 
-        // Create sakura petals
-        function createSakuraPetals() {
-            sakuraContainer.innerHTML = '';
-            const petalCount = 30;
-            
-            for (let i = 0; i < petalCount; i++) {
-                const petal = document.createElement('div');
-                petal.classList.add('petal');
-                
-                // Random properties for natural movement
-                const size = Math.random() * 10 + 10; // 10-20px
-                const xPos = Math.random() * 100; // 0-100%
-                const drift = (Math.random() - 0.5) * 100; // -50 to 50px drift
-                const duration = Math.random() * 10 + 10; // 10-20s fall duration
-                const delay = Math.random() * 15; // 0-15s delay
-                
-                petal.style.setProperty('--x', `${xPos}%`);
-                petal.style.setProperty('--drift', `${drift}px`);
-                petal.style.width = `${size}px`;
-                petal.style.height = `${size}px`;
-                petal.style.animationDuration = `${duration}s`;
-                petal.style.animationDelay = `${delay}s`;
-                petal.style.backgroundColor = '#ffc6e0';
-                petal.style.borderRadius = '30% 70% 70% 30% / 30% 30% 70% 70%';
-                petal.style.transform = `rotate(${Math.random() * 360}deg)`;
-                
-                sakuraContainer.appendChild(petal);
-            }
-        }
-
-        // Create petals if light mode is active
-        if (body.classList.contains('light-mode')) {
-            createSakuraPetals();
-        }
-
-        // Form submission
-        loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const username = loginForm.username.value;
-            const password = loginForm.password.value;
-
-            try {
-                const response = await fetch('/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ username, password })
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    // Add subtle animation before redirect
-                    document.querySelector('.login-container').style.transition = 'transform 0.5s, opacity 0.5s';
-                    document.querySelector('.login-container').style.transform = 'scale(0.95)';
-                    document.querySelector('.login-container').style.opacity = '0';
-                    
-                    // Redirect to index.html on successful login
-                    setTimeout(() => {
-                        window.location.href = '/';
-                    }, 500);
-                } else {
-                    errorMessage.textContent = data.message || 'Login failed.';
-                    // Add subtle shake animation for error
-                    loginForm.classList.add('shake');
-                    setTimeout(() => loginForm.classList.remove('shake'), 500);
-                }
-            } catch (error) {
-                console.error('Login error:', error);
-                errorMessage.textContent = 'An error occurred.';
-            }
-        });
-
-        // Style shake animation for error feedback
+        // Style shake animation for error feedback (can remain here or move to a general CSS file)
         const style = document.createElement('style');
         style.textContent = `
             @keyframes shake {

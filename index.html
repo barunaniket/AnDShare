@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AnDShare</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script defer src="/static/js/theme.js"></script>
+    <script defer src="/static/js/auth.js"></script>
     <style>
         :root {
             /* Dark Mode (Default) */
@@ -672,61 +674,12 @@
         const settingsModal = document.getElementById('settingsModal');
         const closeSettings = document.getElementById('closeSettings');
         const logoutButton = document.getElementById('logoutButton');
-        const themeToggle = document.getElementById('theme-toggle');
-        const body = document.body;
-        const sakuraContainer = document.getElementById('sakura-container');
+        // Theme-related JavaScript (themeToggle, body, sakuraContainer, createSakuraPetals, and listeners)
+        // has been moved to static/js/theme.js
+        // Auth-related functions (checkUserAuthAndRole, handleChangePasswordFormSubmit, handleLogout)
+        // are now in static/js/auth.js
 
-        // Check for saved theme preference or use default
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        if (savedTheme === 'light') {
-            body.classList.add('light-mode');
-            themeToggle.checked = true;
-            createSakuraPetals();
-        }
-
-        // Theme toggle functionality
-        themeToggle.addEventListener('change', () => {
-            if (themeToggle.checked) {
-                body.classList.add('light-mode');
-                localStorage.setItem('theme', 'light');
-                createSakuraPetals();
-            } else {
-                body.classList.remove('light-mode');
-                localStorage.setItem('theme', 'dark');
-            }
-        });
-
-        // Create sakura petals
-        function createSakuraPetals() {
-            sakuraContainer.innerHTML = '';
-            const petalCount = 30;
-            
-            for (let i = 0; i < petalCount; i++) {
-                const petal = document.createElement('div');
-                petal.classList.add('petal');
-                
-                // Random properties for natural movement
-                const size = Math.random() * 10 + 10; // 10-20px
-                const xPos = Math.random() * 100; // 0-100%
-                const drift = (Math.random() - 0.5) * 100; // -50 to 50px drift
-                const duration = Math.random() * 10 + 10; // 10-20s fall duration
-                const delay = Math.random() * 15; // 0-15s delay
-                
-                petal.style.setProperty('--x', `${xPos}%`);
-                petal.style.setProperty('--drift', `${drift}px`);
-                petal.style.width = `${size}px`;
-                petal.style.height = `${size}px`;
-                petal.style.animationDuration = `${duration}s`;
-                petal.style.animationDelay = `${delay}s`;
-                petal.style.backgroundColor = '#ffc6e0';
-                petal.style.borderRadius = '30% 70% 70% 30% / 30% 30% 70% 70%';
-                petal.style.transform = `rotate(${Math.random() * 360}deg)`;
-                
-                sakuraContainer.appendChild(petal);
-            }
-        }
-
-        // Modal event listeners
+        // Modal event listeners (can remain here or move to a UI specific JS file)
         settingsButton.addEventListener('click', () => {
             settingsModal.style.display = 'flex';
         });
@@ -741,97 +694,51 @@
             }
         });
 
-        const changePasswordForm = document.getElementById('changePasswordForm');
-        const changePasswordError = document.getElementById('changePasswordError');
-        const changePasswordSuccess = document.getElementById('changePasswordSuccess');
+        // --- End of Modal event listeners ---
 
-        changePasswordForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
 
-            const oldPassword = changePasswordForm.oldPassword.value;
-            const newPassword = changePasswordForm.newPassword.value;
-            const confirmPassword = changePasswordForm.confirmPassword.value;
-
-            if (newPassword !== confirmPassword) {
-                changePasswordError.textContent = 'New passwords do not match.';
-                changePasswordSuccess.textContent = '';
-                return;
-            }
-
-            try {
-                const response = await fetch('/change_password', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ oldPassword, newPassword })
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    changePasswordSuccess.textContent = data.message || 'Password changed successfully.';
-                    changePasswordError.textContent = '';
-                    changePasswordForm.reset();
-                    setTimeout(() => {
-                        settingsModal.style.display = 'none';
-                        changePasswordSuccess.textContent = '';
-                    }, 3000);
-                } else {
-                    changePasswordError.textContent = 'Password change failed.';
-                    changePasswordSuccess.textContent = '';
-                }
-            } catch (error) {
-                console.error('Password change error:', error);
-                changePasswordError.textContent = 'An error occurred.';
-                changePasswordSuccess.textContent = '';
-            }
-        });
-
-        // Check if user is authenticated
-        async function checkAuth() {
-            try {
-                const response = await fetch('/files');
-                if (response.status === 401) {
-                    window.location.href = '/login.html';
-                } else if (!response.ok) {
-                    throw new Error('Failed to check authentication');
-                } else {
-                    const data = await response.json();
-                    const role = data.role;
-                    adminControls.style.display = role === 'admin' ? 'block' : 'none';
-                }
-            } catch (error) {
-                console.error('Error checking authentication:', error);
-                status.textContent = 'Authentication check failed.';
-                window.location.href = '/login.html';
-            }
-        }
-
-        // Refresh file list every 5 seconds
+        // Refresh file list every 5 seconds (will be adapted for classroom view)
         setInterval(fetchFiles, 5000);
 
         async function fetchFiles() {
+            // This function will be heavily modified for classroom/assignment views.
+            // For now, it just fetches from /files which returns role and an empty file list.
             try {
-                const response = await fetch('/files');
+                const response = await fetch('/files'); // Auth is checked by this endpoint
+                if (response.status === 401) { // Should be handled by checkUserAuthAndRole, but as safeguard
+                    window.location.href = '/login.html';
+                    return;
+                }
                 if (!response.ok) {
                     throw new Error('Failed to fetch files');
                 }
                 const data = await response.json();
-                const role = data.role;
-                const files = data.files;
-                renderFiles(files);
-                adminControls.style.display = role === 'admin' ? 'block' : 'none';
+                const role = data.role; // Role comes from backend
+                const files = data.files; // Currently an empty array
+
+                // Update adminControls visibility based on role from /files endpoint
+                // This might be redundant if checkUserAuthAndRole already does this,
+                // but ensures consistency if /files is the source of truth for role for this view.
+                if (adminControls) {
+                    adminControls.style.display = role === 'superadmin' ? 'block' : 'none';
+                     // TODO: Adapt for 'teacher' role specific controls later
+                }
+                renderFiles(files); // Will render "No files available"
             } catch (error) {
                 console.error('Error fetching files:', error);
-                status.textContent = 'Error loading files';
+                if (status) status.textContent = 'Error loading files';
             }
         }
 
         function renderFiles(files) {
+            // This will render "No files available" for now due to backend changes.
+            // Will be updated to render assignments/submissions.
+            if (!fileList) return;
             if (files.length === 0) {
                 fileList.innerHTML = '<p class="no-files">No files available</p>';
             } else {
+                // This part of the rendering logic is currently unused but kept for future adaptation.
+                // The actual structure of 'file' objects will change significantly.
                 fileList.innerHTML = files.map(file => `
                     <div class="file-item">
                         <div class="file-name">${file.name}</div>
@@ -840,9 +747,10 @@
                         <div class="file-actions">
                             <a href="${file.url}" class="download-btn" download>Download</a>
                             ${file.isViewable ? `<a href="${file.url}" class="download-btn" target="_blank">View</a>` : ''}
-                            ${adminControls.style.display === 'block' ? 
-                                `<select class="status-select" data-filename="${file.name}" onchange="updateStatus(this)">
+                            ${adminControls.style.display === 'block' ? // This condition will need to be role-based
+                                `<select class="status-select" data-submission-id="${file.id}" onchange="updateSubmissionStatus(this)">
                                     <option value="pending" ${file.status === 'pending' ? 'selected' : ''} class="status-pending">Pending</option>
+                                    <option value="submitted" ${file.status === 'submitted' ? 'selected' : ''} class="status-pending">Submitted</option>
                                     <option value="completed" ${file.status === 'completed' ? 'selected' : ''} class="status-completed">Completed</option>
                                     <option value="rejected" ${file.status === 'rejected' ? 'selected' : ''} class="status-rejected">Rejected</option>
                                 </select>` : ''
@@ -853,29 +761,38 @@
             }
         }
 
-        async function updateStatus(selectElement) {
-            const filename = selectElement.dataset.filename;
-            const status = selectElement.value;
+        // Placeholder for what used to be updateStatus. Now it would update submission status.
+        async function updateSubmissionStatus(selectElement) {
+            const submissionId = selectElement.dataset.submissionId; // Expecting submission-id
+            const newStatus = selectElement.value;
 
+            if (!submissionId) {
+                console.error("Submission ID is missing for status update.");
+                return;
+            }
+
+            console.log(`Attempting to update status for submission ${submissionId} to ${newStatus}. (Placeholder)`);
+            // Actual fetch to backend:
             try {
-                const response = await fetch('/update_status', {
+                const response = await fetch('/update_status', { // Endpoint needs to handle submission_id
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ filename, status })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ submission_id: submissionId, status: newStatus })
                 });
-
                 if (response.ok) {
-                    console.log(`Status for ${filename} updated to ${status}`);
-                    fetchFiles();
+                    console.log(`Status for submission ${submissionId} updated to ${newStatus}`);
+                    fetchFiles(); // Refresh the list
                 } else {
-                    console.error(`Failed to update status for ${filename}`);
+                    const errorData = await response.json();
+                    console.error(`Failed to update status for submission ${submissionId}: ${errorData.message}`);
+                    alert(`Failed to update status: ${errorData.message}`);
                 }
             } catch (error) {
-                console.error('Error updating status:', error);
+                console.error('Error updating submission status:', error);
+                alert('An error occurred while updating status.');
             }
         }
+
 
         function formatSize(bytes) {
             if (bytes === 0) return '0 B';
@@ -884,99 +801,103 @@
             return parseFloat((bytes / Math.pow(1024, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
-        uploadTrigger.addEventListener('click', () => fileInput.click());
+        // File upload logic (will need significant changes for assignments/submissions)
+        if (uploadTrigger && fileInput) {
+            uploadTrigger.addEventListener('click', () => fileInput.click());
 
-        fileInput.addEventListener('change', async (e) => {
-            if (!e.target.files.length) return;
+            fileInput.addEventListener('change', async (e) => {
+                if (!e.target.files.length) return;
 
-            const formData = new FormData();
-            const files = Array.from(e.target.files);
-            for (const file of files) {
-                formData.append('files', file);
-            }
-
-            const progressBar = document.getElementById('progress-bar');
-            const progressBarInner = document.getElementById('progress-bar-inner');
-            progressBar.style.display = 'block';
-
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', '/upload');
-
-            xhr.upload.addEventListener('progress', (event) => {
-                if (event.lengthComputable) {
-                    const percentComplete = (event.loaded / event.total) * 100;
-                    progressBarInner.style.width = percentComplete + '%';
+                const formData = new FormData();
+                const filesToUpload = Array.from(e.target.files);
+                for (const file of filesToUpload) {
+                    formData.append('files', file); // Backend expects 'files'
                 }
+
+                // TODO: Determine if this is an assignment upload (teacher) or submission (student)
+                // and include appropriate classroom_id/assignment_id with the upload.
+                // For now, it uses the old /upload endpoint which is a placeholder.
+
+                const progressBar = document.getElementById('progress-bar');
+                const progressBarInner = document.getElementById('progress-bar-inner');
+                if(progressBar) progressBar.style.display = 'block';
+                if(progressBarInner) progressBarInner.style.width = '0%';
+
+
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/upload'); // This endpoint needs to be context-aware
+
+                xhr.upload.addEventListener('progress', (event) => {
+                    if (event.lengthComputable) {
+                        const percentComplete = (event.loaded / event.total) * 100;
+                        if(progressBarInner) progressBarInner.style.width = percentComplete + '%';
+                    }
+                });
+
+                xhr.onload = () => {
+                    if(progressBar) progressBar.style.display = 'none';
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        if(status) status.textContent = 'Files uploaded successfully (placeholder handling)';
+                        setTimeout(() => { if(status) status.textContent = 'Connected · Ready to share'; }, 3000);
+                        fileInput.value = ''; // Clear the input
+                        fetchFiles(); // Refresh file list
+                    } else {
+                        if(status) status.textContent = `Upload failed: ${xhr.responseText || 'Server error'}`;
+                    }
+                };
+
+                xhr.onerror = () => {
+                    if(progressBar) progressBar.style.display = 'none';
+                    if(status) status.textContent = 'Error during upload';
+                };
+
+                xhr.send(formData);
             });
+        }
 
-            xhr.onload = () => {
-                progressBar.style.display = 'none';
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    status.textContent = 'Files shared successfully';
-                    setTimeout(() => status.textContent = 'Connected · Ready to share', 3000);
-                    fileInput.value = '';
-                    fetchFiles();
-                } else {
-                    status.textContent = 'Upload failed';
-                }
-            };
-
-            xhr.onerror = () => {
-                progressBar.style.display = 'none';
-                status.textContent = 'Error sharing files';
-            };
-
-            xhr.send(formData);
-        });
-
+        // Clear All Files button (SuperAdmin only)
         const clearFilesBtn = document.getElementById('clear-files-btn');
         if (clearFilesBtn) {
             clearFilesBtn.addEventListener('click', async () => {
-                if (confirm('Are you sure you want to clear all files and metadata? This action cannot be undone.')) {
+                if (confirm('Are you sure you want to clear all files from upload directory? This action cannot be undone and currently does not remove database records.')) {
                     try {
                         const response = await fetch('/clear_files', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            }
+                            headers: { 'Content-Type': 'application/json' }
                         });
+                        const data = await response.json();
+                        alert(data.message);
                         if (response.ok) {
-                            const data = await response.json();
-                            alert(data.message);
                             fetchFiles();
-                        } else {
-                            alert('Failed to clear files');
                         }
                     } catch (error) {
                         console.error('Error clearing files:', error);
-                        alert('An error occurred while clearing files');
+                        alert('An error occurred while clearing files.');
                     }
                 }
             });
         }
 
-        // Logout functionality
-        logoutButton.addEventListener('click', async () => {
-            try {
-                const response = await fetch('/logout', {
-                    method: 'POST',
-                    credentials: 'include' // Include cookies in the request
-                });
-                
-                if (response.redirected) {
-                    window.location.href = response.url; // Follow the redirect to login.html
-                } else {
-                    status.textContent = 'Logout failed';
+        // Initial setup on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize auth-related event listeners (password change, logout)
+            initializeAuthForms(); // This is defined in auth.js
+
+            // Check authentication and get role
+            const userRole = await checkUserAuthAndRole(); // Defined in auth.js
+
+            if (userRole) {
+                // User is authenticated, proceed to fetch files and set up UI based on role
+                if (adminControls) {
+                    // Adjust this based on new roles: 'superadmin', 'teacher'
+                    adminControls.style.display = userRole === 'superadmin' ? 'block' : 'none';
                 }
-            } catch (error) {
-                console.error('Logout error:', error);
-                status.textContent = 'Error during logout';
+                fetchFiles(); // Initial file fetch
             }
+            // If not authenticated, checkUserAuthAndRole will handle redirection.
         });
 
-        // Initial auth check and load
-        checkAuth();
-        fetchFiles();
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'91f3ef7b9e50bfea',t:'MTc0MTc4OTI2MC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'91f982fafb3253c4',t:'MTc0MTg0NzczMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<!-- Removed Cloudflare specific analytics/challenge scripts for clarity -->
+</body>
 </html>
