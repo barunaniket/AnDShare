@@ -58,15 +58,24 @@ async def init_db(app):
     try:
         await db_setup.create_tables()
         logger.info("Database tables checked/created successfully.")
-        # Optional: Create a default superadmin user if none exists
-        superadmin_username = os.environ.get("SUPERADMIN_USERNAME", "superadmin")
-        superadmin_password = os.environ.get("SUPERADMIN_PASSWORD", "superadminpass")
-        existing_superadmin = await db_queries.get_user_by_username(superadmin_username)
+
+        # Create a default superadmin user if none exists, with specified credentials
+        default_superadmin_username = "admin"
+        default_superadmin_password = "admin"
+
+        # Check if the user 'admin' exists, irrespective of environment variables for this specific setup
+        existing_superadmin = await db_queries.get_user_by_username(default_superadmin_username)
+
         if not existing_superadmin:
-            await db_queries.add_user(superadmin_username, superadmin_password, "superadmin")
-            logger.info(f"Default superadmin user '{superadmin_username}' created.")
+            # Use environment variables as overrides ONLY IF they are set, otherwise use hardcoded defaults.
+            # For this task, we are enforcing 'admin'/'admin' as the primary default.
+            # So, we won't check os.environ.get here for the default creation.
+            # If a user wants to use env vars, they'd typically ensure the DB is already seeded or handle it externally.
+
+            await db_queries.add_user(default_superadmin_username, default_superadmin_password, "superadmin")
+            logger.info(f"Default superadmin user '{default_superadmin_username}' created with the specified password.")
         else:
-            logger.info(f"Superadmin user '{superadmin_username}' already exists.")
+            logger.info(f"Superadmin user '{default_superadmin_username}' already exists.")
 
     except Exception as e:
         logger.error(f"Database initialization failed: {e}", exc_info=True)
